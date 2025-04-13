@@ -9,4 +9,9 @@ public class Constants {
 
     public static final Integer ROOM_STATUS_IN_PROGRESS = 0;
     public static final Integer ROOM_STATUS_FINISHED = 1;
+
+    public static final String ROOM_ACTION_JOIN = "join";
+    public static final String ROOM_ACTION_LEAVE = "leave";
+    public static final String ROOM_ACTION_CLOSE = "close";
+    public static final String ROOM_ACTION_CALCULATE = "calculate";
 }

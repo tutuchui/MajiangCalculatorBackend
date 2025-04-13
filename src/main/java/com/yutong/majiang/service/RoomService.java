@@ -8,9 +8,8 @@ import com.yutong.majiang.entity.GameRoomPlayerID;
 import com.yutong.majiang.entity.MajiangUser;
 import com.yutong.majiang.repository.GameRoomPlayerRepository;
 import com.yutong.majiang.repository.GameRoomRepository;
+import com.yutong.majiang.request.HuDetail;
 import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.stereotype.Service;
@@ -19,8 +18,6 @@ import org.springframework.util.CollectionUtils;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
-import java.util.UUID;
 
 @Service
 @AllArgsConstructor
@@ -71,6 +68,14 @@ public class RoomService {
         }
     }
 
+    public void removeUser(String roomId, String userId) {
+        GameRoomPlayerID gameRoomPlayerID = new GameRoomPlayerID();
+        gameRoomPlayerID.setRoomId(roomId);
+        gameRoomPlayerID.setUserId(userId);
+        gameRoomPlayerRepository.deleteById(gameRoomPlayerID);
+        log.info("Remove user {} from room {} successfully", userId, roomId);
+    }
+
     public List<RoomPlayerDTO> getUsersByRoomId(String roomId) {
         List<GameRoomPlayer> gameRoomPlayerList = gameRoomPlayerRepository.findGameRoomPlayersByRoomId(roomId);
         List<RoomPlayerDTO> roomPlayerDTOList = new ArrayList<>();
@@ -97,5 +102,9 @@ public class RoomService {
             gameRoomRepository.saveAndFlush(gameRoom);
             log.info("Close room {} successfully", roomId);
         }
+    }
+
+    public void calculate(HuDetail huDetail, String roomId) {
+
     }
 }
