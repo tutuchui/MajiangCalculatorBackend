@@ -9,4 +9,5 @@ import lombok.Setter;
 public class RoomPlayerDTO {
     private MajiangUser majiangUser;
     private Boolean isHost;
+    private Integer points;
 }

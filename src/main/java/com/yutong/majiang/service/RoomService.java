@@ -2,13 +2,15 @@ package com.yutong.majiang.service;
 
 import com.yutong.majiang.constant.Constants;
 import com.yutong.majiang.dto.RoomPlayerDTO;
-import com.yutong.majiang.entity.GameRoom;
-import com.yutong.majiang.entity.GameRoomPlayer;
-import com.yutong.majiang.entity.GameRoomPlayerID;
-import com.yutong.majiang.entity.MajiangUser;
+import com.yutong.majiang.dto.RoomRecordDTO;
+import com.yutong.majiang.entity.*;
 import com.yutong.majiang.repository.GameRoomPlayerRepository;
+import com.yutong.majiang.repository.GameRoomRecordRepository;
 import com.yutong.majiang.repository.GameRoomRepository;
+import com.yutong.majiang.request.FlyZhongInfo;
+import com.yutong.majiang.request.GangInfo;
 import com.yutong.majiang.request.HuDetail;
+import com.yutong.majiang.response.Player;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -18,6 +20,7 @@ import org.springframework.util.CollectionUtils;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @AllArgsConstructor
@@ -29,6 +32,8 @@ public class RoomService {
     private GameRoomPlayerRepository gameRoomPlayerRepository;
 
     private UserService userService;
+
+    private GameRoomRecordRepository gameRoomRecordRepository;
 
     public String createRoom(String creator) {
         GameRoom gameRoom = new GameRoom();
@@ -61,6 +66,7 @@ public class RoomService {
             }else{
                 gameRoomPlayer.setIsHost(0);
             }
+            gameRoomPlayer.setPoints(0);
             gameRoomPlayer.setJoinedDate(new Timestamp(System.currentTimeMillis()));
             gameRoomPlayerRepository.saveAndFlush(gameRoomPlayer);
 
@@ -84,6 +90,7 @@ public class RoomService {
             RoomPlayerDTO roomPlayerDTO = new RoomPlayerDTO();
             roomPlayerDTO.setMajiangUser(majiangUser);
             roomPlayerDTO.setIsHost(1 == gameRoomPlayer.getIsHost());
+            roomPlayerDTO.setPoints(gameRoomPlayer.getPoints());
             roomPlayerDTOList.add(roomPlayerDTO);
         }
         return roomPlayerDTOList;
@@ -104,7 +111,99 @@ public class RoomService {
         }
     }
 
-    public void calculate(HuDetail huDetail, String roomId) {
+    public RoomRecordDTO calculate(HuDetail huDetail, String roomId) {
+        log.info("Calculate hu details for room: {} start", roomId);
+        List<RoomPlayerDTO> roomPlayerDTOList = this.getUsersByRoomId(roomId);
+        int playerCount = roomPlayerDTOList.size();
+        Integer basePoints = huDetail.getBasePoint();
+        Integer actualPoints = basePoints;
+        if(huDetail.getIsGangKai()) {
+            actualPoints = basePoints * 2;
+        }
+        if(huDetail.getFourZhongWin()) {
+            actualPoints = basePoints * 4;
+        }else {
+            actualPoints += huDetail.getMaCount() * actualPoints;
+        }
+
+        //处理基础胡牌信息
+        for(RoomPlayerDTO roomPlayerDTO : roomPlayerDTOList) {
+            if(roomPlayerDTO.getMajiangUser().getUserId().equals(huDetail.getHuPlayer().getUserId())) {
+                roomPlayerDTO.setPoints(actualPoints * (playerCount - 1));
+            }else {
+                roomPlayerDTO.setPoints(-actualPoints);
+            }
+        }
+        //处理飞红中信息
+        if(!CollectionUtils.isEmpty(huDetail.getFlyZhongInfoList())) {
+            log.info("Process fly zhong info");
+            RoomPlayerDTO huPlayer = roomPlayerDTOList.stream().filter(p -> p.getMajiangUser().getUserId().equals(huDetail.getHuPlayer().getUserId())).findFirst().get();
+            for(FlyZhongInfo flyZhongInfo : huDetail.getFlyZhongInfoList()) {
+                int times = (int) Math.pow(2, flyZhongInfo.getZhongCount());
+                //赢家飞红中
+               if(flyZhongInfo.getZhongPlayer().getUserId().equals(huDetail.getHuPlayer().getUserId())) {
+                    huPlayer.setPoints(huPlayer.getPoints() * times);
+                    List<RoomPlayerDTO> losePlayers = roomPlayerDTOList.stream().filter(p -> !p.getMajiangUser().getUserId().equals(huPlayer.getMajiangUser().getUserId())).toList();
+                    for(RoomPlayerDTO losePlayer : losePlayers) {
+                       losePlayer.setPoints(losePlayer.getPoints() * times);
+                    }
+                }
+               else {
+                   //输家飞红中，输的分数翻倍
+                   RoomPlayerDTO losePlayer = roomPlayerDTOList.stream().filter(p -> p.getMajiangUser().getUserId().equals(flyZhongInfo.getZhongPlayer().getUserId())).findFirst().get();
+                   int losePoints = losePlayer.getPoints();
+                   losePlayer.setPoints(losePoints * times);
+                   //胡牌玩家获取输家翻倍的分数
+                   huPlayer.setPoints(Math.abs(losePlayer.getPoints() - losePoints) + huPlayer.getPoints());
+               }
+            }
+        }
+
+        //处理杠信息
+        if(!CollectionUtils.isEmpty(huDetail.getGangInfoList())) {
+            log.info("Process Gang info");
+            for(GangInfo gangInfo : huDetail.getGangInfoList()) {
+                int winPoints = 0;
+                int losePoints = 0;
+               RoomPlayerDTO winPlayer = roomPlayerDTOList.stream().filter(p -> p.getMajiangUser().getUserId().equals(gangInfo.getWinPlayer().getUserId())).findFirst().get();
+               //暗杠
+               if(gangInfo.getLosePlayer().getUserId().equals("-1") //暗杠
+                       || gangInfo.getLosePlayer().getUserId().equals("-2") ) { //臭杠
+                   int baseCount = gangInfo.getLosePlayer().getUserId().equals("-1") ? 2 : 1;
+                   List<RoomPlayerDTO> losePlayers = roomPlayerDTOList.stream().filter(p -> !p.getMajiangUser().getUserId().equals(gangInfo.getWinPlayer().getUserId())).toList();
+                   winPoints = baseCount * (playerCount - 1) * basePoints;
+                   losePoints = baseCount * basePoints;
+                   winPlayer.setPoints(winPlayer.getPoints() + winPoints);
+                   for(RoomPlayerDTO losePlayer : losePlayers) {
+                       losePlayer.setPoints(losePlayer.getPoints() - losePoints);
+                   }
+               }else {
+                   RoomPlayerDTO losePlayer = roomPlayerDTOList.stream().filter(p -> p.getMajiangUser().getUserId().equals(gangInfo.getLosePlayer().getUserId())).findFirst().get();
+                   winPoints = 3 * basePoints;
+                   losePoints = 3 * basePoints;
+                   winPlayer.setPoints(winPlayer.getPoints() + winPoints);
+                   losePlayer.setPoints(losePlayer.getPoints() - losePoints);
+               }
+            }
+        }
+
+        RoomRecordDTO roomRecordDTO = new RoomRecordDTO();
+        roomRecordDTO.setPlayerRecordList(roomPlayerDTOList);
+        roomRecordDTO.setCreateTime(new Timestamp(System.currentTimeMillis()));
+
+        for(RoomPlayerDTO roomPlayerDTO : roomPlayerDTOList) {
+            GameRoomRecord gameRoomRecord = new GameRoomRecord();
+            gameRoomRecord.setRoomId(roomId);
+            gameRoomRecord.setUserId(roomPlayerDTO.getMajiangUser().getUserId());
+            int maxSeqNo = Optional.of(gameRoomRecordRepository.getMaxSeqNoByRoomId(roomId)).orElse(-1);
+            gameRoomRecord.setSeqNo(maxSeqNo + 1);
+            gameRoomRecord.setPoints(roomPlayerDTO.getPoints());
+            gameRoomRecord.setCreateTime(new Timestamp(System.currentTimeMillis()));
+            gameRoomRecordRepository.saveAndFlush(gameRoomRecord);
+            log.info("Save record for round {}, room {}  complete", maxSeqNo + 1, roomId);
+        }
+        log.info("Calculate hu details for room: {} complete", roomId);
+        return roomRecordDTO;
 
     }
 }

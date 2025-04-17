@@ -26,4 +26,7 @@ public class GameRoomPlayer {
     @Column(name = "JOINED_DATE")
     private Timestamp joinedDate;
 
+    @Column(name = "POINTS")
+    private Integer points;
+
 }

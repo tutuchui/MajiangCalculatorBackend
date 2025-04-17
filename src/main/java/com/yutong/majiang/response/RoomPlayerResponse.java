@@ -22,6 +22,7 @@ public class RoomPlayerResponse {
             player.setNickname(majiangUser.getNickname());
             player.setAvatarUrl(majiangUser.getAvatarUrl());
             player.setIsHost(roomPlayerDTO.getIsHost());
+            player.setPoints(roomPlayerDTO.getPoints());
             playerList.add(player);
         }
         this.playerList = playerList;

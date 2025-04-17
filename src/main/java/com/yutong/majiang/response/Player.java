@@ -10,4 +10,5 @@ public class Player {
     private String nickname;
     private String avatarUrl;
     private Boolean isHost;
+    private Integer points;
 }

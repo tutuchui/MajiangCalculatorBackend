@@ -2,6 +2,7 @@ package com.yutong.majiang.handler;
 
 import com.google.gson.Gson;
 import com.yutong.majiang.constant.Constants;
+import com.yutong.majiang.request.HuDetail;
 import com.yutong.majiang.request.RoomActionRequest;
 import com.yutong.majiang.response.RoomNotifyResponse;
 import com.yutong.majiang.service.RoomService;
@@ -75,6 +76,8 @@ public class GameRoomWebSocketHandler extends TextWebSocketHandler {
             log.info("remove player {} from room {}", userId, roomId);
         }else if(Constants.ROOM_ACTION_CALCULATE.equals(roomActionRequest.getAction())) {
             String roomId = roomActionRequest.getRoomDetail().getRoomId();
+            HuDetail huDetail = roomActionRequest.getHuDetail();
+
 
         }
 
