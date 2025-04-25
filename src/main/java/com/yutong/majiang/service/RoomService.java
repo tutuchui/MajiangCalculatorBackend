@@ -90,7 +90,8 @@ public class RoomService {
             RoomPlayerDTO roomPlayerDTO = new RoomPlayerDTO();
             roomPlayerDTO.setMajiangUser(majiangUser);
             roomPlayerDTO.setIsHost(1 == gameRoomPlayer.getIsHost());
-            roomPlayerDTO.setPoints(gameRoomPlayer.getPoints());
+            roomPlayerDTO.setTotalPoints(gameRoomPlayer.getPoints());
+            roomPlayerDTO.setCurPoints(0);
             roomPlayerDTOList.add(roomPlayerDTO);
         }
         return roomPlayerDTOList;
@@ -129,9 +130,9 @@ public class RoomService {
         //处理基础胡牌信息
         for(RoomPlayerDTO roomPlayerDTO : roomPlayerDTOList) {
             if(roomPlayerDTO.getMajiangUser().getUserId().equals(huDetail.getHuPlayer().getUserId())) {
-                roomPlayerDTO.setPoints(actualPoints * (playerCount - 1));
+                roomPlayerDTO.setCurPoints(actualPoints * (playerCount - 1));
             }else {
-                roomPlayerDTO.setPoints(-actualPoints);
+                roomPlayerDTO.setCurPoints(-actualPoints);
             }
         }
         //处理飞红中信息
@@ -142,19 +143,19 @@ public class RoomService {
                 int times = (int) Math.pow(2, flyZhongInfo.getZhongCount());
                 //赢家飞红中
                if(flyZhongInfo.getZhongPlayer().getUserId().equals(huDetail.getHuPlayer().getUserId())) {
-                    huPlayer.setPoints(huPlayer.getPoints() * times);
+                    huPlayer.setCurPoints(huPlayer.getCurPoints() * times);
                     List<RoomPlayerDTO> losePlayers = roomPlayerDTOList.stream().filter(p -> !p.getMajiangUser().getUserId().equals(huPlayer.getMajiangUser().getUserId())).toList();
                     for(RoomPlayerDTO losePlayer : losePlayers) {
-                       losePlayer.setPoints(losePlayer.getPoints() * times);
+                       losePlayer.setCurPoints(losePlayer.getCurPoints() * times);
                     }
                 }
                else {
                    //输家飞红中，输的分数翻倍
                    RoomPlayerDTO losePlayer = roomPlayerDTOList.stream().filter(p -> p.getMajiangUser().getUserId().equals(flyZhongInfo.getZhongPlayer().getUserId())).findFirst().get();
-                   int losePoints = losePlayer.getPoints();
-                   losePlayer.setPoints(losePoints * times);
+                   int losePoints = losePlayer.getCurPoints();
+                   losePlayer.setCurPoints(losePoints * times);
                    //胡牌玩家获取输家翻倍的分数
-                   huPlayer.setPoints(Math.abs(losePlayer.getPoints() - losePoints) + huPlayer.getPoints());
+                   huPlayer.setCurPoints(Math.abs(losePlayer.getCurPoints() - losePoints) + huPlayer.getCurPoints());
                }
             }
         }
@@ -173,16 +174,16 @@ public class RoomService {
                    List<RoomPlayerDTO> losePlayers = roomPlayerDTOList.stream().filter(p -> !p.getMajiangUser().getUserId().equals(gangInfo.getWinPlayer().getUserId())).toList();
                    winPoints = baseCount * (playerCount - 1) * basePoints;
                    losePoints = baseCount * basePoints;
-                   winPlayer.setPoints(winPlayer.getPoints() + winPoints);
+                   winPlayer.setCurPoints(winPlayer.getCurPoints() + winPoints);
                    for(RoomPlayerDTO losePlayer : losePlayers) {
-                       losePlayer.setPoints(losePlayer.getPoints() - losePoints);
+                       losePlayer.setCurPoints(losePlayer.getCurPoints() - losePoints);
                    }
                }else {
                    RoomPlayerDTO losePlayer = roomPlayerDTOList.stream().filter(p -> p.getMajiangUser().getUserId().equals(gangInfo.getLosePlayer().getUserId())).findFirst().get();
                    winPoints = 3 * basePoints;
                    losePoints = 3 * basePoints;
-                   winPlayer.setPoints(winPlayer.getPoints() + winPoints);
-                   losePlayer.setPoints(losePlayer.getPoints() - losePoints);
+                   winPlayer.setCurPoints(winPlayer.getCurPoints() + winPoints);
+                   losePlayer.setCurPoints(losePlayer.getCurPoints() - losePoints);
                }
             }
         }
@@ -191,17 +192,34 @@ public class RoomService {
         roomRecordDTO.setPlayerRecordList(roomPlayerDTOList);
         roomRecordDTO.setCreateTime(new Timestamp(System.currentTimeMillis()));
 
+        //Save points for current round
         for(RoomPlayerDTO roomPlayerDTO : roomPlayerDTOList) {
             GameRoomRecord gameRoomRecord = new GameRoomRecord();
             gameRoomRecord.setRoomId(roomId);
             gameRoomRecord.setUserId(roomPlayerDTO.getMajiangUser().getUserId());
-            int maxSeqNo = Optional.of(gameRoomRecordRepository.getMaxSeqNoByRoomId(roomId)).orElse(-1);
+            int maxSeqNo = Optional.ofNullable(gameRoomRecordRepository.getMaxSeqNoByRoomId(roomId)).orElse(-1);
             gameRoomRecord.setSeqNo(maxSeqNo + 1);
-            gameRoomRecord.setPoints(roomPlayerDTO.getPoints());
+            gameRoomRecord.setPoints(roomPlayerDTO.getCurPoints());
             gameRoomRecord.setCreateTime(new Timestamp(System.currentTimeMillis()));
             gameRoomRecordRepository.saveAndFlush(gameRoomRecord);
+
+            //Update Total points for each player
+            GameRoomPlayerID gameRoomPlayerID = new GameRoomPlayerID();
+            gameRoomPlayerID.setRoomId(roomId);
+            gameRoomPlayerID.setUserId(roomPlayerDTO.getMajiangUser().getUserId());
+            GameRoomPlayer gameRoomPlayer = gameRoomPlayerRepository.findById(gameRoomPlayerID).orElse(null);
+            if(gameRoomPlayer != null) {
+                int totalPoints = gameRoomPlayer.getPoints() + roomPlayerDTO.getCurPoints();
+                roomPlayerDTO.setTotalPoints(totalPoints);
+                gameRoomPlayer.setPoints(totalPoints);
+                gameRoomPlayerRepository.saveAndFlush(gameRoomPlayer);
+            }
             log.info("Save record for round {}, room {}  complete", maxSeqNo + 1, roomId);
         }
+
+
+
+        //Update total points for each player
         log.info("Calculate hu details for room: {} complete", roomId);
         return roomRecordDTO;
 

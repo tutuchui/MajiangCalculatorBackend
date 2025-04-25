@@ -2,8 +2,10 @@ package com.yutong.majiang.handler;
 
 import com.google.gson.Gson;
 import com.yutong.majiang.constant.Constants;
+import com.yutong.majiang.dto.RoomRecordDTO;
 import com.yutong.majiang.request.HuDetail;
 import com.yutong.majiang.request.RoomActionRequest;
+import com.yutong.majiang.response.GameRecordResponse;
 import com.yutong.majiang.response.RoomNotifyResponse;
 import com.yutong.majiang.service.RoomService;
 import lombok.AllArgsConstructor;
@@ -77,8 +79,9 @@ public class GameRoomWebSocketHandler extends TextWebSocketHandler {
         }else if(Constants.ROOM_ACTION_CALCULATE.equals(roomActionRequest.getAction())) {
             String roomId = roomActionRequest.getRoomDetail().getRoomId();
             HuDetail huDetail = roomActionRequest.getHuDetail();
-
-
+            RoomRecordDTO roomRecordDTO = roomService.calculate(huDetail, roomId);
+            notifyCalculateResult(roomId, roomRecordDTO);
+            log.info("Calculate game result complete");
         }
 
 
@@ -112,6 +115,20 @@ public class GameRoomWebSocketHandler extends TextWebSocketHandler {
             }
         }
 
+    }
+
+    private void notifyCalculateResult(String roomId, RoomRecordDTO roomRecordDTO) throws Exception {
+        Set<WebSocketSession> sessions = roomSessions.get(roomId);
+        if (sessions != null) {
+            for (WebSocketSession session : sessions) {
+                log.info("Send game record result for room: {}", roomId);
+                GameRecordResponse gameRecordResponse = new GameRecordResponse();
+                gameRecordResponse.setRoomId(roomId);
+                gameRecordResponse.setRoomRecordDTO(roomRecordDTO);
+                gameRecordResponse.setAction("calculate");
+                session.sendMessage(new TextMessage(new Gson().toJson(gameRecordResponse)));
+            }
+        }
     }
 
     private void notifyPlayerLeave(String roomId, String userId, WebSocketSession session) throws Exception {
